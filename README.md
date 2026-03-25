@@ -1,2 +1,2 @@
-# Data_analytics_projects
-Data analytics projects
+# Bank Customer Churn Prediction App
+Data science project for Bank Customer Churn Prediction
