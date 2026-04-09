@@ -8,17 +8,11 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
 
-# -------------------------------
-# PAGE CONFIG
-# -------------------------------
 st.set_page_config(page_title="Churn Predictor", layout="wide")
 
 st.title("🏦 Bank Customer Churn Prediction App")
 st.write("Predict whether a customer will churn using Machine Learning")
 
-# -------------------------------
-# LOAD DATA (FIXED PATH)
-# -------------------------------
 @st.cache_data
 def load_data():
     try:
@@ -35,24 +29,16 @@ df = load_data()
 if df is None:
     st.stop()
 
-# -------------------------------
-# PREPROCESSING
-# -------------------------------
 def preprocess(df):
     df = df.copy()
 
-    # Safe column drop
     df.drop(['CustomerId', 'Surname'], axis=1, errors='ignore', inplace=True)
 
-    # One-hot encoding
     df = pd.get_dummies(df, drop_first=True)
 
     return df
 
 
-# -------------------------------
-# TRAIN MODEL
-# -------------------------------
 @st.cache_resource
 def train_model(df):
     try:
@@ -92,14 +78,8 @@ model, scaler, feature_cols, auc_score = train_model(df)
 if model is None:
     st.stop()
 
-# -------------------------------
-# DISPLAY METRIC
-# -------------------------------
 st.subheader(f"📊 Model ROC-AUC Score: {auc_score:.3f}")
 
-# -------------------------------
-# SIDEBAR INPUT
-# -------------------------------
 st.sidebar.header("Enter Customer Details")
 
 credit_score = st.sidebar.slider("Credit Score", 300, 900, 600)
@@ -114,9 +94,6 @@ salary = st.sidebar.number_input("Estimated Salary", value=50000.0)
 gender = st.sidebar.selectbox("Gender", ["Male", "Female"])
 geography = st.sidebar.selectbox("Geography", ["France", "Germany", "Spain"])
 
-# -------------------------------
-# PREDICTION FUNCTION
-# -------------------------------
 def predict():
     try:
         input_data = {
@@ -153,9 +130,6 @@ def predict():
         return None
 
 
-# -------------------------------
-# BUTTON ACTION
-# -------------------------------
 if st.button("Predict Churn"):
 
     probability = predict()
@@ -172,9 +146,6 @@ if st.button("Predict Churn"):
 
         st.progress(float(probability))
 
-# -------------------------------
-# FEATURE IMPORTANCE
-# -------------------------------
 st.subheader("📌 Feature Importance")
 
 try:
@@ -184,8 +155,5 @@ try:
 except:
     st.warning("Feature importance not available")
 
-# -------------------------------
-# RAW DATA VIEW
-# -------------------------------
 if st.checkbox("Show Raw Data"):
     st.write(df.head())
