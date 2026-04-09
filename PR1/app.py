@@ -1,70 +1,105 @@
-
+import os
 import pandas as pd
 import numpy as np
 import streamlit as st
-import pickle
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
 
-
-@st.cache_data
-def load_data():
-    df = pd.read_csv("European_Bank.csv")
-    return df
-
-df = load_data()
-
-def preprocess(df):
-    df = df.copy()
-
-    df.drop(['CustomerId', 'Surname'], axis=1, inplace=True)
-
-    df = pd.get_dummies(df, drop_first=True)
-
-    return df
-
-
-@st.cache_resource
-def train_model():
-    data = preprocess(df)
-
-    X = data.drop("Exited", axis=1)
-    y = data["Exited"]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-
-    # Scaling
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
-
-    # Model
-    model = XGBClassifier(use_label_encoder=False, eval_metric='logloss')
-    model.fit(X_train, y_train)
-
-    # Evaluate
-    y_prob = model.predict_proba(X_test)[:, 1]
-    auc = roc_auc_score(y_test, y_prob)
-
-    return model, scaler, X.columns, auc
-
-
-model, scaler, feature_cols, auc_score = train_model()
-
-
-# STREAMLIT UI
+# -------------------------------
+# PAGE CONFIG
+# -------------------------------
 st.set_page_config(page_title="Churn Predictor", layout="wide")
 
 st.title("🏦 Bank Customer Churn Prediction App")
 st.write("Predict whether a customer will churn using Machine Learning")
 
+# -------------------------------
+# LOAD DATA (FIXED PATH)
+# -------------------------------
+@st.cache_data
+def load_data():
+    try:
+        file_path = os.path.join(os.path.dirname(__file__), "European_Bank.csv")
+        df = pd.read_csv(file_path)
+        return df
+    except Exception as e:
+        st.error(f"❌ Error loading dataset: {e}")
+        return None
+
+
+df = load_data()
+
+if df is None:
+    st.stop()
+
+# -------------------------------
+# PREPROCESSING
+# -------------------------------
+def preprocess(df):
+    df = df.copy()
+
+    # Safe column drop
+    df.drop(['CustomerId', 'Surname'], axis=1, errors='ignore', inplace=True)
+
+    # One-hot encoding
+    df = pd.get_dummies(df, drop_first=True)
+
+    return df
+
+
+# -------------------------------
+# TRAIN MODEL
+# -------------------------------
+@st.cache_resource
+def train_model(df):
+    try:
+        data = preprocess(df)
+
+        X = data.drop("Exited", axis=1)
+        y = data["Exited"]
+
+        feature_cols = X.columns.tolist()
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+
+        # Scaling
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test = scaler.transform(X_test)
+
+        # Model (FIXED)
+        model = XGBClassifier(eval_metric='logloss')
+        model.fit(X_train, y_train)
+
+        # Evaluation
+        y_prob = model.predict_proba(X_test)[:, 1]
+        auc = roc_auc_score(y_test, y_prob)
+
+        return model, scaler, feature_cols, auc
+
+    except Exception as e:
+        st.error(f"❌ Model training failed: {e}")
+        return None, None, None, None
+
+
+model, scaler, feature_cols, auc_score = train_model(df)
+
+if model is None:
+    st.stop()
+
+# -------------------------------
+# DISPLAY METRIC
+# -------------------------------
 st.subheader(f"📊 Model ROC-AUC Score: {auc_score:.3f}")
 
+# -------------------------------
+# SIDEBAR INPUT
+# -------------------------------
 st.sidebar.header("Enter Customer Details")
 
 credit_score = st.sidebar.slider("Credit Score", 300, 900, 600)
@@ -79,57 +114,78 @@ salary = st.sidebar.number_input("Estimated Salary", value=50000.0)
 gender = st.sidebar.selectbox("Gender", ["Male", "Female"])
 geography = st.sidebar.selectbox("Geography", ["France", "Germany", "Spain"])
 
-
+# -------------------------------
+# PREDICTION FUNCTION
+# -------------------------------
 def predict():
-    input_data = {
-        "CreditScore": credit_score,
-        "Age": age,
-        "Tenure": tenure,
-        "Balance": balance,
-        "NumOfProducts": products,
-        "HasCrCard": has_card,
-        "IsActiveMember": is_active,
-        "EstimatedSalary": salary,
-        "Gender": gender,
-        "Geography": geography
-    }
+    try:
+        input_data = {
+            "CreditScore": credit_score,
+            "Age": age,
+            "Tenure": tenure,
+            "Balance": balance,
+            "NumOfProducts": products,
+            "HasCrCard": has_card,
+            "IsActiveMember": is_active,
+            "EstimatedSalary": salary,
+            "Gender": gender,
+            "Geography": geography
+        }
 
-    input_df = pd.DataFrame([input_data])
+        input_df = pd.DataFrame([input_data])
 
-    # Apply same preprocessing
-    input_df = pd.get_dummies(input_df)
-    input_df = input_df.reindex(columns=feature_cols, fill_value=0)
+        # One-hot encoding
+        input_df = pd.get_dummies(input_df)
 
-    # Scale
-    input_scaled = scaler.transform(input_df)
+        # Align columns
+        input_df = input_df.reindex(columns=feature_cols, fill_value=0)
 
-    # Predict
-    prob = model.predict_proba(input_scaled)[0][1]
+        # Scale
+        input_scaled = scaler.transform(input_df)
 
-    return prob
+        # Predict
+        prob = model.predict_proba(input_scaled)[0][1]
 
+        return prob
+
+    except Exception as e:
+        st.error(f"❌ Prediction failed: {e}")
+        return None
+
+
+# -------------------------------
+# BUTTON ACTION
+# -------------------------------
 if st.button("Predict Churn"):
 
     probability = predict()
 
-    st.subheader("🔮 Prediction Result")
+    if probability is not None:
+        st.subheader("🔮 Prediction Result")
 
-    st.write(f"**Churn Probability:** {probability:.2f}")
+        st.write(f"**Churn Probability:** {probability:.2f}")
 
-    if probability > 0.5:
-        st.error("⚠️ High Risk of Churn")
-    else:
-        st.success("✅ Low Risk of Churn")
+        if probability > 0.5:
+            st.error("⚠️ High Risk of Churn")
+        else:
+            st.success("✅ Low Risk of Churn")
 
-    # Progress bar
-    st.progress(float(probability))
+        st.progress(float(probability))
 
+# -------------------------------
+# FEATURE IMPORTANCE
+# -------------------------------
 st.subheader("📌 Feature Importance")
 
-importance = pd.Series(model.feature_importances_, index=feature_cols)
-importance = importance.sort_values(ascending=False).head(10)
+try:
+    importance = pd.Series(model.feature_importances_, index=feature_cols)
+    importance = importance.sort_values(ascending=False).head(10)
+    st.bar_chart(importance)
+except:
+    st.warning("Feature importance not available")
 
-st.bar_chart(importance)
-
+# -------------------------------
+# RAW DATA VIEW
+# -------------------------------
 if st.checkbox("Show Raw Data"):
     st.write(df.head())
